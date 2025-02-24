@@ -6,7 +6,15 @@ This project demonstrates SSDT Hooking on Windows 11 by intercepting calls to Nt
 
 Then, the rootkit  sets the PreviousMode flag as kernel mode and writes the usermode program parameter to kernel memory and it removes the trampoline it added to NtLoadDriver. Finally loads the driver. 
 
+If you want to take a look at the detailed description of the project, you can check out [this medium article](https://medium.com/@0xbekoo/loading-driver-from-user-mode-program-via-ssdt-hooking-720eeb08abb9).
+
+> [!Warning]
+> Please note that the content of this repository is intended for educational purposes only. I do not endorse or encourage any illegal activities. The techniques and methods demonstrated here should not be used for malicious purposes or in any unauthorized scenarios.
+
 ## `🔧:` Running The Project
+
+> [!Note]
+> To test the project, you need to prepare your virtual machine as test mode.
 
 First of all, the project has been prepared for the following Windows version:
 
