@@ -1,3 +1,19 @@
+/*
+╔═════════════════════════════════════════════════════════════╗
+║                                                             ║
+║                 ⚠️  Malware Development  ⚠️                ║
+║                                                             ║
+║  @author: bekoo                                             ║
+║  @website : 0xbekoo.github.io                               ║
+║  @warning : This project has been developed                 ║
+║              for educational purposes only.                 ║
+║                                                             ║
+║  @project: SSDT Hooking - KernelMode Driver                 ║
+║  @platform: Windows 11 24H2 (Build: 26100.3194)             ║
+║                                                             ║
+╚═════════════════════════════════════════════════════════════╝
+*/
+
 #pragma warning(disable:4996)
 
 #include "main.h"
