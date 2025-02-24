@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <Windows.h>
 
-#define DEVICE_NAME L"\\\\.\\MyDriverr"
+#define DEVICE_NAME L"\\\\.\\MyDriver"
 
-#define IOCTL_BYPASS_PREVIOUS_MODE \
+#define IOCTL_TRAMPOLINE \
     CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 typedef struct _UNICODE_STRING
@@ -25,6 +25,11 @@ FORCEINLINE VOID RtlInitUnicodeString(
 
 	DestinationString->Buffer = (PWCH)SourceString;
 }
+
+typedef NTSTATUS(NTAPI* RtlAppendUnicodeToString)(
+	_Inout_ PUNICODE_STRING Destination,
+	_In_opt_z_ PCWSTR Source
+);
 
 typedef NTSTATUS(NTAPI* NtLoadDriver)(
 	PUNICODE_STRING DriverServiceName

